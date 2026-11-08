@@ -44,11 +44,15 @@ async function uniqueUsername(base) {
 }
 async function authorize(req, requestedRole) {
   const bootstrapToken = String(process.env.CENTRO_BOOTSTRAP_TOKEN || '');
+  const supplied = String(req.headers['x-centro-bootstrap-token'] || '');
+  const validToken = bootstrapToken && supplied.length === bootstrapToken.length && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(bootstrapToken));
+  // The one-time bootstrap secret authorizes the first Professor Admin without
+  // reading the RLS-protected profiles collection. This keeps installation
+  // possible even before database policies are fully initialized.
+  if (requestedRole === 'teacher_admin' && validToken) return;
+
   if (await profileCount() === 0) {
-    const supplied = String(req.headers['x-centro-bootstrap-token'] || '');
-    const validToken = bootstrapToken && supplied.length === bootstrapToken.length && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(bootstrapToken));
-    if (requestedRole !== 'teacher_admin' || !validToken) throw new HttpError(403, 'A primeira conta deve ser Professor Admin e requer a chave de instalação.');
-    return;
+    throw new HttpError(403, 'A primeira conta deve ser Professor Admin e requer a chave de instalação.');
   }
   const { profile } = await authenticate(req);
   if (profile.role !== 'teacher_admin' || profile.is_superadmin !== true) throw new HttpError(403, 'Apenas Professores Admin podem criar contas.');
