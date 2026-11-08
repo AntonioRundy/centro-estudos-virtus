@@ -7,7 +7,7 @@ module.exports = async function handler(req, res) {
     if (req.method !== 'POST') return json(res, 405, { error: 'Método não permitido.' });
     stage = 'validar a sessão';
     const { profile } = await authenticate(req);
-    if (profile.role !== 'teacher') throw new HttpError(403, 'Só o professor pode remover ficheiros partilhados.');
+    if (!['teacher', 'teacher_admin'].includes(profile.role)) throw new HttpError(403, 'Só o professor pode remover ficheiros partilhados.');
     stage = 'consultar os dados da turma';
     const ids = [...new Set((Array.isArray(req.body?.assetIds) ? req.body.assetIds : []).filter(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(id))))].slice(0, 200);
     const { state } = await getStoredState();

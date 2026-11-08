@@ -10,7 +10,7 @@ module.exports = async function handler(req, res) {
     const assetId = String(req.query?.assetId || '');
     if (!isUuid(assetId)) throw new HttpError(400, 'O identificador do ficheiro não é válido.');
     const stored = await getStoredState();
-    const state = profile.role === 'teacher' ? stored.state : studentState(stored.state, profile);
+    const state = ['teacher', 'teacher_admin'].includes(profile.role) ? stored.state : studentState(stored.state, profile);
     if (!state) throw new HttpError(404, 'O ficheiro não está disponível.');
     const lesson = (state.lessons || []).find(item => item.assetId === assetId && item.cloudStored === true);
     const submission = (state.taskSubmissions || []).find(item => item.assetId === assetId && item.cloudStored === true);

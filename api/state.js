@@ -196,8 +196,8 @@ module.exports = async function handler(req, res) {
     const { profile } = await authenticate(req);
     if (req.method === 'GET') {
       const stored = await getStoredState();
-      if (profile.role === 'teacher') {
-        const roster = (await getRoster()).map(item => ({ id: item.id, name: item.full_name, email: '', className: 'Diagrafias 2026/2027', createdAt: item.created_at }));
+      if (['teacher', 'teacher_admin'].includes(profile.role)) {
+        const roster = (await getRoster()).map(item => ({ id: item.id, name: item.full_name, email: '', className: 'Centro Virtus', createdAt: item.created_at }));
         return json(res, 200, { state: stored.state, revision: stored.revision, roster });
       }
       return json(res, 200, { state: studentState(stored.state, profile), revision: stored.revision });
@@ -208,7 +208,7 @@ module.exports = async function handler(req, res) {
     const incoming = req.body?.state;
     if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) throw new HttpError(400, 'O formato dos dados não é válido.');
     const stored = await getStoredState();
-    const next = profile.role === 'teacher' ? incoming : await acceptStudentChanges(incoming, stored.state, profile);
+    const next = ['teacher', 'teacher_admin'].includes(profile.role) ? incoming : await acceptStudentChanges(incoming, stored.state, profile);
     const saved = await saveStoredState(next, req.body?.expectedRevision);
     return json(res, 200, { ok: true, revision: saved.revision });
   } catch (error) {

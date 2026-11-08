@@ -1,20 +1,24 @@
--- Sala Virtus: contas fechadas e estado partilhado da turma.
--- Executar no SQL Editor do projecto Supabase antes de provisionar as contas.
+-- Centro de Estudos e Explicações Virtus: contas e estado do centro.
+-- Executar no SQL Editor do projecto Supabase Centro Virtus antes do primeiro acesso.
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text not null unique,
   full_name text not null,
-  role text not null check (role in ('teacher', 'student')),
+  role text not null check (role in ('teacher_admin', 'teacher', 'student')),
   must_change_password boolean not null default false,
   is_superadmin boolean not null default false,
   created_at timestamptz not null default now()
 );
 
 alter table public.profiles add column if not exists is_superadmin boolean not null default false;
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check
+  check (role in ('teacher_admin', 'teacher', 'student'));
 
--- Bootstrap is deliberate: grant this flag only in the Supabase SQL Editor to a trusted account.
--- update public.profiles set is_superadmin = true where username = 'administrador.virtus';
+-- teacher_admin is the only role with administrative powers.  The first account
+-- is created through the one-time bootstrap route; subsequent accounts are
+-- created through /admin/provisioning by a signed-in teacher_admin.
 
 alter table public.profiles enable row level security;
 revoke all on table public.profiles from anon, authenticated;

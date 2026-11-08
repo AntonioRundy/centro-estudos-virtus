@@ -1,6 +1,8 @@
-const {
-  SUPABASE_URL, requireConfiguration, serviceHeaders, authenticate, HttpError, json, responseError,
-} = require('../_lib');
+const crypto = require('crypto');
+const { SUPABASE_URL, requireConfiguration, serviceHeaders, authenticate, HttpError, json, responseError } = require('../_lib');
+
+const VIRTUAL_EMAIL_DOMAIN = 'users.centro-estudosvirtus.vercel.app';
+const INITIAL_PASSWORD = '123456';
 
 function readBody(req) {
   if (typeof req.body === 'string') {
@@ -8,77 +10,77 @@ function readBody(req) {
   }
   return req.body || {};
 }
-function normalizeUsername(value) {
-  return String(value || '').trim().toLowerCase().replace(/\s+/g, '.');
-}
-function temporaryPassword() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
-  const bytes = require('crypto').randomBytes(15);
-  return Array.from(bytes, value => alphabet.charAt(value % alphabet.length)).join('');
+function usernamePart(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '');
 }
 function validateAccount(raw) {
-  const username = normalizeUsername(raw.username);
   const fullName = String(raw.fullName || raw.full_name || '').trim().replace(/\s+/g, ' ');
   const role = String(raw.role || 'student').toLowerCase();
-  if (!/^[a-z0-9][a-z0-9._-]{2,59}$/.test(username)) throw new HttpError(400, 'O nome de utilizador deve ter entre 3 e 60 caracteres: letras minúsculas, números, ponto, hífen ou _.');
   if (fullName.length < 3 || fullName.length > 160) throw new HttpError(400, 'Indique o nome completo da conta.');
-  if (!['student', 'teacher'].includes(role)) throw new HttpError(400, 'O perfil deve ser aluno ou docente.');
-  return { username, fullName, role };
+  if (!['student', 'teacher', 'teacher_admin'].includes(role)) throw new HttpError(400, 'Escolha Aluno, Professor ou Professor Admin.');
+  const words = fullName.split(' ').map(usernamePart).filter(Boolean);
+  const base = [words[0], words.at(-1)].filter(Boolean).join('.').slice(0, 54);
+  if (base.length < 3) throw new HttpError(400, 'Não foi possível gerar o nome de utilizador a partir do nome indicado.');
+  return { base, fullName, role };
 }
-async function findExistingProfile(username) {
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id&username=eq.${encodeURIComponent(username)}`, { headers: serviceHeaders() });
-  if (!response.ok) throw new HttpError(503, 'Não foi possível validar os nomes de utilizador.');
-  return (await response.json())[0] || null;
+async function profileCount() {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id`, { headers: { ...serviceHeaders(), Prefer: 'count=exact' } });
+  if (!response.ok) throw new HttpError(503, 'Não foi possível validar as contas existentes.');
+  return Number(String(response.headers.get('content-range') || '').split('/').pop()) || 0;
+}
+async function uniqueUsername(base) {
+  for (let number = 1; number < 1000; number += 1) {
+    const username = number === 1 ? base : `${base}.${number}`;
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id&username=eq.${encodeURIComponent(username)}&limit=1`, { headers: serviceHeaders() });
+    if (!response.ok) throw new HttpError(503, 'Não foi possível gerar o nome de utilizador.');
+    if (!(await response.json()).length) return username;
+  }
+  throw new HttpError(409, 'Não foi possível gerar um nome de utilizador disponível.');
+}
+async function authorize(req, requestedRole) {
+  const bootstrapToken = String(process.env.CENTRO_BOOTSTRAP_TOKEN || '');
+  if (await profileCount() === 0) {
+    const supplied = String(req.headers['x-centro-bootstrap-token'] || '');
+    const validToken = bootstrapToken && supplied.length === bootstrapToken.length && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(bootstrapToken));
+    if (requestedRole !== 'teacher_admin' || !validToken) throw new HttpError(403, 'A primeira conta deve ser Professor Admin e requer a chave de instalação.');
+    return;
+  }
+  const { profile } = await authenticate(req);
+  if (profile.role !== 'teacher_admin' || profile.is_superadmin !== true) throw new HttpError(403, 'Apenas Professores Admin podem criar contas.');
 }
 async function createAccount(account) {
-  const password = temporaryPassword();
-  const email = `${account.username}@users.sala-virtus.vercel.app`;
+  const username = await uniqueUsername(account.base);
+  const email = `${username}@${VIRTUAL_EMAIL_DOMAIN}`;
   const authResponse = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-    method: 'POST',
-    headers: serviceHeaders(),
-    body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { username: account.username, full_name: account.fullName } }),
+    method: 'POST', headers: serviceHeaders(),
+    body: JSON.stringify({ email, password: INITIAL_PASSWORD, email_confirm: true,
+      app_metadata: { role: account.role }, user_metadata: { username, full_name: account.fullName } }),
   });
   if (!authResponse.ok) {
     const detail = await authResponse.json().catch(() => ({}));
-    throw new HttpError(409, detail.msg || detail.message || `Não foi possível criar ${account.username}.`);
+    throw new HttpError(409, detail.msg || detail.message || 'Não foi possível criar a conta.');
   }
   const user = await authResponse.json();
   const profileResponse = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
-    method: 'POST',
-    headers: serviceHeaders({ Prefer: 'return=representation' }),
-    body: JSON.stringify({ id: user.id, username: account.username, full_name: account.fullName, role: account.role, must_change_password: true }),
+    method: 'POST', headers: serviceHeaders({ Prefer: 'return=representation' }),
+    body: JSON.stringify({ id: user.id, username, full_name: account.fullName, role: account.role,
+      is_superadmin: account.role === 'teacher_admin', must_change_password: true }),
   });
   if (!profileResponse.ok) {
     await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(user.id)}`, { method: 'DELETE', headers: serviceHeaders() }).catch(() => {});
     const detail = await profileResponse.json().catch(() => ({}));
-    throw new HttpError(503, detail.message || `A conta ${account.username} não foi concluída.`);
+    throw new HttpError(503, detail.message || 'A conta não foi concluída.');
   }
-  return { username: account.username, fullName: account.fullName, role: account.role, temporaryPassword: password };
+  return { username, email, fullName: account.fullName, role: account.role, temporaryPassword: INITIAL_PASSWORD };
 }
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Método não permitido.' });
   try {
     requireConfiguration({ server: true });
-    const { profile } = await authenticate(req);
-    if (profile.is_superadmin !== true) throw new HttpError(403, 'Apenas administradores autorizados podem provisionar contas.');
-    const body = readBody(req);
-    const incoming = Array.isArray(body.accounts) ? body.accounts : [body.account || body];
-    if (!incoming.length || incoming.length > 100) throw new HttpError(400, 'Envie entre 1 e 100 contas por operação.');
-    const accounts = incoming.map(validateAccount);
-    const duplicates = accounts.filter((account, index) => accounts.findIndex(item => item.username === account.username) !== index);
-    if (duplicates.length) throw new HttpError(400, 'O ficheiro contém nomes de utilizador repetidos.');
-    const created = [], failed = [];
-    for (const account of accounts) {
-      try {
-        if (await findExistingProfile(account.username)) throw new HttpError(409, 'Nome de utilizador já existe.');
-        created.push(await createAccount(account));
-      } catch (error) {
-        failed.push({ username: account.username, error: error.message || 'Falha ao criar a conta.' });
-      }
-    }
-    return json(res, failed.length ? 207 : 201, { created, failed });
-  } catch (error) {
-    return responseError(res, error);
-  }
+    const account = validateAccount(readBody(req));
+    await authorize(req, account.role);
+    return json(res, 201, { account: await createAccount(account) });
+  } catch (error) { return responseError(res, error); }
 };

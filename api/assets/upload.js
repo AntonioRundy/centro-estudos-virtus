@@ -36,7 +36,7 @@ module.exports = async function handler(req, res) {
     const { state } = await getStoredState();
     if (!state) throw new HttpError(409, 'A sala ainda não está preparada.');
     if (kind === 'lesson') {
-      if (profile.role !== 'teacher') throw new HttpError(403, 'Só o professor pode publicar materiais de aula.');
+      if (!['teacher', 'teacher_admin'].includes(profile.role)) throw new HttpError(403, 'Só o professor pode publicar materiais de aula.');
       if (!(state.modules || []).some(module => module.id === moduleId)) throw new HttpError(400, 'Selecione um módulo válido.');
     } else if (kind === 'task') {
       if (profile.role !== 'student') throw new HttpError(403, 'As entregas são feitas através de uma conta de aluno.');
@@ -57,7 +57,7 @@ module.exports = async function handler(req, res) {
       if (task.type === 'group' && !team) throw new HttpError(409, 'Ainda não foi atribuído a um grupo.');
       if (existing?.cloudStored) throw new HttpError(409, 'Já existe uma entrega nesta tarefa.');
     } else if (kind === 'prompt') {
-      if (profile.role !== 'teacher') throw new HttpError(403, 'Só o professor pode anexar enunciados.');
+      if (!['teacher', 'teacher_admin'].includes(profile.role)) throw new HttpError(403, 'Só o professor pode anexar enunciados.');
       const activityExists = [...(state.quizzes || []), ...(state.tasks || [])].some(item => item.id === activityId);
       if (!activityExists) throw new HttpError(404, 'A atividade que vai receber o anexo não está disponível.');
     } else {
