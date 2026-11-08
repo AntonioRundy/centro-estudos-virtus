@@ -24,8 +24,10 @@ function serviceHeaders(extra = {}) {
     'Content-Type': 'application/json',
     ...extra,
   };
-  // Secret API keys (sb_secret_*) are not JWTs; only legacy service_role JWTs belong in Authorization.
-  if (/^eyJ[A-Za-z0-9_-]+\./.test(SUPABASE_SERVER_KEY)) headers.Authorization = 'Bearer ' + SUPABASE_SERVER_KEY;
+  // Supabase accepts the server key in `apikey`; sending it as Bearer as well
+  // keeps REST and Auth admin endpoints consistent for both legacy JWT keys
+  // and the newer `sb_secret_` server keys.
+  if (SUPABASE_SERVER_KEY) headers.Authorization = 'Bearer ' + SUPABASE_SERVER_KEY;
   return headers;
 }
 
@@ -181,4 +183,3 @@ module.exports = {
   json, requireConfiguration, serviceHeaders, authenticate, getStoredState,
   saveStoredState, getRoster, studentState, quizAvailableToStudent, responseError,
 };
-
