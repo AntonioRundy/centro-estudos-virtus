@@ -26,7 +26,11 @@ function validateAccount(raw) {
 }
 async function profileCount() {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id`, { headers: { ...serviceHeaders(), Prefer: 'count=exact' } });
-  if (!response.ok) throw new HttpError(503, 'Não foi possível validar as contas existentes.');
+  if (!response.ok) {
+    // Keep credentials and server responses private, but surface the HTTP status
+    // so a deployment misconfiguration can be diagnosed without guesswork.
+    throw new HttpError(503, `Não foi possível validar as contas existentes (Supabase HTTP ${response.status}).`);
+  }
   return Number(String(response.headers.get('content-range') || '').split('/').pop()) || 0;
 }
 async function uniqueUsername(base) {
