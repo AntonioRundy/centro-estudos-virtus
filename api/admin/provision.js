@@ -33,7 +33,8 @@ async function profileCount() {
   }
   return Number(String(response.headers.get('content-range') || '').split('/').pop()) || 0;
 }
-async function uniqueUsername(base) {
+async function uniqueUsername(base, { assumeAvailable = false } = {}) {
+  if (assumeAvailable) return base;
   for (let number = 1; number < 1000; number += 1) {
     const username = number === 1 ? base : `${base}.${number}`;
     const response = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id&username=eq.${encodeURIComponent(username)}&limit=1`, { headers: serviceHeaders() });
@@ -49,16 +50,17 @@ async function authorize(req, requestedRole) {
   // The one-time bootstrap secret authorizes the first Professor Admin without
   // reading the RLS-protected profiles collection. This keeps installation
   // possible even before database policies are fully initialized.
-  if (requestedRole === 'teacher_admin' && validToken) return;
+  if (requestedRole === 'teacher_admin' && validToken) return { bootstrap: true };
 
   if (await profileCount() === 0) {
     throw new HttpError(403, 'A primeira conta deve ser Professor Admin e requer a chave de instalação.');
   }
   const { profile } = await authenticate(req);
   if (profile.role !== 'teacher_admin' || profile.is_superadmin !== true) throw new HttpError(403, 'Apenas Professores Admin podem criar contas.');
+  return { bootstrap: false };
 }
-async function createAccount(account) {
-  const username = await uniqueUsername(account.base);
+async function createAccount(account, { bootstrap = false } = {}) {
+  const username = await uniqueUsername(account.base, { assumeAvailable: bootstrap });
   const email = `${username}@${VIRTUAL_EMAIL_DOMAIN}`;
   const authResponse = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
     method: 'POST', headers: serviceHeaders(),
@@ -67,7 +69,7 @@ async function createAccount(account) {
   });
   if (!authResponse.ok) {
     const detail = await authResponse.json().catch(() => ({}));
-    throw new HttpError(409, detail.msg || detail.message || 'Não foi possível criar a conta.');
+    throw new HttpError(409, detail.msg || detail.message || `Não foi possível criar a conta (Supabase Auth HTTP ${authResponse.status}).`);
   }
   const user = await authResponse.json();
   const profileResponse = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
@@ -88,8 +90,8 @@ module.exports = async function handler(req, res) {
   try {
     requireConfiguration({ server: true });
     const account = validateAccount(readBody(req));
-    await authorize(req, account.role);
-    return json(res, 201, { account: await createAccount(account) });
+    const authorization = await authorize(req, account.role);
+    return json(res, 201, { account: await createAccount(account, authorization) });
   } catch (error) { return responseError(res, error); }
 };
 
