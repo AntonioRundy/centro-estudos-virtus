@@ -1,0 +1,13 @@
+{
+  "name": "sala-de-aula-virtus",
+  "private": true,
+  "version": "1.0.0",
+  "type": "commonjs",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:unit": "node --test tests/unit/*.test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.1"
+  }
+}
