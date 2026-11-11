@@ -37,7 +37,7 @@ async function sendRecoveryEmail({ username, fullName, password }) {
       to: [ADMIN_RECOVERY_EMAIL],
       subject: `Recuperação de acesso — ${fullName || username}`,
       text: [
-        'Foi gerada uma nova palavra-passe temporária para a Sala de Aula Virtus.',
+        'Foi gerada uma nova palavra-passe temporária para o Centro de Estudos e Explicações Virtus.',
         `Utilizador: ${username}`,
         `Palavra-passe temporária: ${password}`,
         '',

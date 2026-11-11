@@ -58,7 +58,7 @@ test('ficheiros de tarefas verificam o âmbito do professor antes do acesso ou u
 });
 
 test('rotas agrupadas preservam os endereços públicos de autenticação, ficheiros e administração', () => {
-  for (const route of ['auth/session', 'auth/config', 'assets/read', 'assets/upload', 'assets/delete', 'admin/provision', 'admin/directory']) {
+  for (const route of ['auth/session', 'auth/config', 'auth/token', 'assets/read', 'assets/upload', 'assets/delete', 'admin/provision', 'admin/directory']) {
     assert.match(apiRouter, new RegExp(`['\"]${route}['\"]`));
   }
 });

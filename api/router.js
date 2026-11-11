@@ -6,6 +6,7 @@
 const handlers = {
   'auth/change-password': require('../server/auth/change-password'),
   'auth/config': require('../server/auth/config'),
+  'auth/token': require('../server/auth/token'),
   'auth/request-password-reset': require('../server/auth/request-password-reset'),
   'auth/session': require('../server/auth/session'),
   'assets/upload': require('../server/assets/upload'),
