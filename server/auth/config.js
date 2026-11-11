@@ -1,4 +1,4 @@
-const { SUPABASE_URL, SUPABASE_ANON_KEY, json } = require('../_lib');
+const { SUPABASE_URL, SUPABASE_ANON_KEY, json } = require('../../api/_lib');
 
 module.exports = function handler(req, res) {
   if (req.method !== 'GET') return json(res, 405, { error: 'Método não permitido.' });

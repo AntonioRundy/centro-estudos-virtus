@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { SUPABASE_URL, HttpError, requireConfiguration, serviceHeaders, json, responseError } = require('../_lib');
+const { SUPABASE_URL, HttpError, requireConfiguration, serviceHeaders, json, responseError } = require('../../api/_lib');
 
 const ADMIN_RECOVERY_EMAIL = String(process.env.VIRTUS_RECOVERY_EMAIL || 'rundyelidio@gmail.com').trim();
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();

@@ -1,4 +1,4 @@
-const { SUPABASE_URL, SUPABASE_ANON_KEY, authenticate, serviceHeaders, json, responseError } = require('../_lib');
+const { SUPABASE_URL, SUPABASE_ANON_KEY, authenticate, serviceHeaders, json, responseError } = require('../../api/_lib');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Método não permitido.' });

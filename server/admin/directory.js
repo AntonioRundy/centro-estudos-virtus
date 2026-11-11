@@ -1,6 +1,6 @@
 const {
   SUPABASE_URL, authenticate, serviceHeaders, HttpError, json, responseError, isAdminTeacher,
-} = require('../_lib');
+} = require('../../api/_lib');
 
 function cleanSubjectName(value) {
   const name = String(value || '').trim().replace(/\s+/g, ' ');

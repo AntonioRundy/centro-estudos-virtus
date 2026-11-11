@@ -1,4 +1,4 @@
-const { authenticate, json, responseError } = require('../_lib');
+const { authenticate, json, responseError } = require('../../api/_lib');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return json(res, 405, { error: 'Método não permitido.' });

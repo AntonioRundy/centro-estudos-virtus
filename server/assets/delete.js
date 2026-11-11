@@ -1,5 +1,5 @@
-const { HttpError, authenticate, getStoredState, isAdminTeacher, json, responseError } = require('../_lib');
-const { storagePath, removeObject } = require('../_storage');
+const { HttpError, authenticate, getStoredState, isAdminTeacher, json, responseError } = require('../../api/_lib');
+const { storagePath, removeObject } = require('../../api/_storage');
 
 module.exports = async function handler(req, res) {
   let stage = 'validar o pedido';

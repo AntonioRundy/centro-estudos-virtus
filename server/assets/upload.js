@@ -2,8 +2,8 @@ const { randomUUID } = require('crypto');
 const {
   SUPABASE_ANON_KEY, HttpError, authenticate, getStoredState, getActiveTeacherAssignments,
   isTeachingProfile, isAdminTeacher, json,
-} = require('../_lib');
-const { storagePath, createUploadUrl } = require('../_storage');
+} = require('../../api/_lib');
+const { storagePath, createUploadUrl } = require('../../api/_storage');
 const MIME_BY_EXTENSION = {
   '.pdf': ['application/pdf'], '.doc': ['application/msword'],
   '.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],

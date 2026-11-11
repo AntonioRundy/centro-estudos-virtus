@@ -5,12 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const provision = fs.readFileSync(path.join(root, 'api/admin/provision.js'), 'utf8');
-const directory = fs.readFileSync(path.join(root, 'api/admin/directory.js'), 'utf8');
+const provision = fs.readFileSync(path.join(root, 'server/admin/provision.js'), 'utf8');
+const directory = fs.readFileSync(path.join(root, 'server/admin/directory.js'), 'utf8');
 const stateApi = fs.readFileSync(path.join(root, 'api/state.js'), 'utf8');
 const helpers = fs.readFileSync(path.join(root, 'api/_lib.js'), 'utf8');
-const assetRead = fs.readFileSync(path.join(root, 'api/assets/read.js'), 'utf8');
-const assetUpload = fs.readFileSync(path.join(root, 'api/assets/upload.js'), 'utf8');
+const assetRead = fs.readFileSync(path.join(root, 'server/assets/read.js'), 'utf8');
+const assetUpload = fs.readFileSync(path.join(root, 'server/assets/upload.js'), 'utf8');
+const apiRouter = fs.readFileSync(path.join(root, 'api/[...route].js'), 'utf8');
 
 test('cria uma matrícula activa ao criar a conta de aluno', () => {
   assert.match(provision, /account\.role === 'student'/);
@@ -54,4 +55,10 @@ test('ficheiros de tarefas verificam o âmbito do professor antes do acesso ou u
   assert.match(assetRead, /teacherState\(stored\.state/);
   assert.match(assetUpload, /activityIsWithinTeacherScope/);
   assert.match(assetUpload, /A atividade não está atribuída apenas aos seus alunos/);
+});
+
+test('rotas agrupadas preservam os endereços públicos de autenticação, ficheiros e administração', () => {
+  for (const route of ['auth/session', 'auth/config', 'assets/read', 'assets/upload', 'assets/delete', 'admin/provision', 'admin/directory']) {
+    assert.match(apiRouter, new RegExp(`['\"]${route}['\"]`));
+  }
 });

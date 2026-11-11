@@ -1,8 +1,8 @@
 const {
   HttpError, authenticate, getStoredState, studentState, teacherState,
   getActiveTeacherAssignments, isTeachingProfile, isAdminTeacher, json, responseError,
-} = require('../_lib');
-const { storagePath, createReadUrl } = require('../_storage');
+} = require('../../api/_lib');
+const { storagePath, createReadUrl } = require('../../api/_storage');
 
 function isUuid(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '')); }
 
