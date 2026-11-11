@@ -1,4 +1,7 @@
-const { HttpError, authenticate, getStoredState, studentState, json, responseError } = require('../_lib');
+const {
+  HttpError, authenticate, getStoredState, studentState, teacherState,
+  getActiveTeacherAssignments, isTeachingProfile, isAdminTeacher, json, responseError,
+} = require('../_lib');
 const { storagePath, createReadUrl } = require('../_storage');
 
 function isUuid(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '')); }
@@ -10,7 +13,11 @@ module.exports = async function handler(req, res) {
     const assetId = String(req.query?.assetId || '');
     if (!isUuid(assetId)) throw new HttpError(400, 'O identificador do ficheiro não é válido.');
     const stored = await getStoredState();
-    const state = ['teacher', 'teacher_admin'].includes(profile.role) ? stored.state : studentState(stored.state, profile);
+    const assignments = isTeachingProfile(profile) && !isAdminTeacher(profile)
+      ? await getActiveTeacherAssignments(profile.id) : undefined;
+    const state = isAdminTeacher(profile) ? stored.state
+      : isTeachingProfile(profile) ? assignments === null ? stored.state : teacherState(stored.state, assignments)
+        : studentState(stored.state, profile);
     if (!state) throw new HttpError(404, 'O ficheiro não está disponível.');
     const lesson = (state.lessons || []).find(item => item.assetId === assetId && item.cloudStored === true);
     const submission = (state.taskSubmissions || []).find(item => item.assetId === assetId && item.cloudStored === true);

@@ -1,6 +1,7 @@
 const {
   HttpError, authenticate, getStoredState, getRoster, saveStoredState,
-  studentState, quizAvailableToStudent, json, responseError,
+  studentState, quizAvailableToStudent, isTeachingProfile, isAdminTeacher,
+  getActiveTeacherAssignments, teacherState, json, responseError,
 } = require('./_lib');
 
 function isUuid(value) {
@@ -191,14 +192,98 @@ async function acceptStudentChanges(incoming, current, profile) {
   return accepted;
 }
 
+function mergeOwnedById(currentItems, incomingItems, canManage) {
+  const present = new Map((incomingItems || []).filter(item => item?.id).map(item => [String(item.id), item]));
+  const currentIds = new Set((currentItems || []).filter(item => item?.id).map(item => String(item.id)));
+  const merged = (currentItems || []).map(item => canManage(item) && present.has(String(item.id))
+    ? present.get(String(item.id)) : item);
+  for (const item of incomingItems || []) {
+    if (item?.id && !currentIds.has(String(item.id)) && canManage(item)) merged.push(item);
+  }
+  return merged;
+}
+
+async function acceptTeacherChanges(incoming, current, profile) {
+  if (!current) throw new HttpError(409, 'O Centro ainda não está preparado para receber registos.');
+  const assignments = await getActiveTeacherAssignments(profile.id);
+  if (assignments === null) return incoming;
+  const assignedIds = new Set(assignments.map(item => String(item.student_id)));
+  if (!assignedIds.size) throw new HttpError(403, 'Não tem alunos atribuídos para efectuar este registo.');
+  const scopedIncoming = teacherState(incoming, assignments);
+  const accepted = structuredClone(current);
+  const ownsStudent = item => assignedIds.has(String(item?.studentId));
+  const ownsTask = item => item?.type !== 'group' && Array.isArray(item.assignedStudents) &&
+    item.assignedStudents.length > 0 && item.assignedStudents.every(id => assignedIds.has(String(id)));
+  const ownsQuiz = item => Array.isArray(item?.assignedStudents) && item.assignedStudents.length > 0 &&
+    item.assignedStudents.every(id => assignedIds.has(String(id)));
+
+  // O professor recebe um recorte do estado e apenas esse recorte é fundido de
+  // volta. Dados de outros alunos nunca são aceites, substituídos ou removidos.
+  accepted.tasks = mergeOwnedById(current.tasks, scopedIncoming.tasks, ownsTask);
+  accepted.quizzes = mergeOwnedById(current.quizzes, scopedIncoming.quizzes, ownsQuiz);
+  accepted.provisionalGrades = mergeOwnedById(current.provisionalGrades, scopedIncoming.provisionalGrades, ownsStudent);
+  accepted.assessmentGrades = mergeOwnedById(current.assessmentGrades, scopedIncoming.assessmentGrades, ownsStudent);
+
+  const submitted = new Map((scopedIncoming.submissions || []).map(item => [String(item.id), item]));
+  accepted.submissions = (current.submissions || []).map(item => {
+    const update = submitted.get(String(item.id));
+    if (!update || !ownsStudent(item)) return item;
+    // Respostas e evidências são do aluno; a correcção pode alterar somente a nota e o estado.
+    return {
+      ...item,
+      score: Number.isFinite(Number(update.score)) ? Math.max(0, Math.min(20, Number(update.score))) : item.score,
+      manualStatus: ['pending', 'graded'].includes(update.manualStatus) ? update.manualStatus : item.manualStatus,
+      gradedAt: update.manualStatus === 'graded' ? new Date().toISOString() : item.gradedAt,
+    };
+  });
+
+  const existingSessions = new Map((current.attendanceSessions || []).map(item => [String(item.id), item]));
+  for (const session of scopedIncoming.attendanceSessions || []) {
+    const allowedRecords = Object.fromEntries(Object.entries(session.records || {}).filter(([id]) => assignedIds.has(String(id))));
+    const allowedAttendance = Object.fromEntries(Object.entries(session.attendance || {}).filter(([id]) => assignedIds.has(String(id))));
+    const previous = existingSessions.get(String(session.id));
+    if (!previous) {
+      if (Object.keys(allowedRecords).length || Object.keys(allowedAttendance).length) {
+        existingSessions.set(String(session.id), { ...session, records: allowedRecords, attendance: allowedAttendance });
+      }
+    } else {
+      existingSessions.set(String(session.id), {
+        ...previous,
+        records: { ...(previous.records || {}), ...allowedRecords },
+        attendance: { ...(previous.attendance || {}), ...allowedAttendance },
+      });
+    }
+  }
+  accepted.attendanceSessions = [...existingSessions.values()];
+
+  const currentNotifications = current.notifications || [];
+  const existingNotificationIds = new Set(currentNotifications.map(item => String(item.id)));
+  const outgoingNotifications = (scopedIncoming.notifications || []).filter(item => item?.id &&
+    item.audience === 'students' && Array.isArray(item.recipientIds) && item.recipientIds.length > 0 &&
+    item.recipientIds.every(id => assignedIds.has(String(id))));
+  accepted.notifications = [...currentNotifications, ...outgoingNotifications.filter(item => !existingNotificationIds.has(String(item.id)))].slice(0, 100);
+  return accepted;
+}
+
 module.exports = async function handler(req, res) {
   try {
     const { profile } = await authenticate(req);
     if (req.method === 'GET') {
       const stored = await getStoredState();
-      if (['teacher', 'teacher_admin'].includes(profile.role)) {
+      if (isAdminTeacher(profile)) {
         const roster = (await getRoster()).map(item => ({ id: item.id, name: item.full_name, email: '', className: 'Centro Virtus', createdAt: item.created_at }));
         return json(res, 200, { state: stored.state, revision: stored.revision, roster });
+      }
+      if (isTeachingProfile(profile)) {
+        const assignments = await getActiveTeacherAssignments(profile.id);
+        if (assignments === null) {
+          const roster = (await getRoster()).map(item => ({ id: item.id, name: item.full_name, email: '', className: 'Centro Virtus', createdAt: item.created_at }));
+          return json(res, 200, { state: stored.state, revision: stored.revision, roster });
+        }
+        const assignedIds = new Set(assignments.map(item => String(item.student_id)));
+        const roster = (await getRoster()).filter(item => assignedIds.has(String(item.id)))
+          .map(item => ({ id: item.id, name: item.full_name, email: '', className: 'Centro Virtus', createdAt: item.created_at }));
+        return json(res, 200, { state: teacherState(stored.state, assignments), revision: stored.revision, roster });
       }
       return json(res, 200, { state: studentState(stored.state, profile), revision: stored.revision });
     }
@@ -208,7 +293,10 @@ module.exports = async function handler(req, res) {
     const incoming = req.body?.state;
     if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) throw new HttpError(400, 'O formato dos dados não é válido.');
     const stored = await getStoredState();
-    const next = ['teacher', 'teacher_admin'].includes(profile.role) ? incoming : await acceptStudentChanges(incoming, stored.state, profile);
+    if (profile.role === 'secretary') throw new HttpError(403, 'A Secretária não pode alterar o estado pedagógico.');
+    const next = isAdminTeacher(profile) ? incoming
+      : isTeachingProfile(profile) ? await acceptTeacherChanges(incoming, stored.state, profile)
+        : await acceptStudentChanges(incoming, stored.state, profile);
     const saved = await saveStoredState(next, req.body?.expectedRevision);
     return json(res, 200, { ok: true, revision: saved.revision });
   } catch (error) {

@@ -1,3 +1,5 @@
+const { isTeachingRole, canonicalRole } = require('../lib/roles');
+
 const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
 const SUPABASE_SERVER_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
@@ -27,6 +29,73 @@ function serviceHeaders(extra = {}) {
   // Secret API keys (sb_secret_*) are not JWTs; only legacy service_role JWTs belong in Authorization.
   if (/^eyJ[A-Za-z0-9_-]+\./.test(SUPABASE_SERVER_KEY)) headers.Authorization = 'Bearer ' + SUPABASE_SERVER_KEY;
   return headers;
+}
+
+function isTeachingProfile(profile) {
+  return isTeachingRole(profile?.role);
+}
+
+function isAdminTeacher(profile) {
+  return canonicalRole(profile?.role) === 'admin_teacher';
+}
+
+async function getActiveTeacherAssignments(teacherId) {
+  const today = new Date().toISOString().slice(0, 10);
+  const query = new URLSearchParams({
+    select: 'student_id,subject_id', teacher_id: `eq.${teacherId}`,
+    starts_on: `lte.${today}`, or: `(ends_on.is.null,ends_on.gte.${today})`,
+  });
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/teacher_student_subject_assignments?${query}`, {
+    headers: serviceHeaders(),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    // A versão-ponte pode ser publicada antes da migração. Enquanto a tabela
+    // ainda não existir, conserva o comportamento legado; depois da migração,
+    // uma lista vazia significa correctamente que não há atribuições.
+    if (response.status === 404 && /not found|does not exist|schema cache|PGRST205/i.test(JSON.stringify(detail))) return null;
+    throw new HttpError(503, 'Não foi possível validar as atribuições do professor.');
+  }
+  return response.json();
+}
+
+function teacherState(state, assignmentRows) {
+  if (!state) return null;
+  const allowedStudentIds = new Set((assignmentRows || []).map(item => String(item.student_id)));
+  const copy = structuredClone(state);
+  const allowed = item => allowedStudentIds.has(String(item?.studentId));
+  const allowedStudents = (state.students || []).filter(student => allowedStudentIds.has(String(student.id)));
+  const allowedTaskIds = new Set((state.tasks || []).filter(task =>
+    task?.type !== 'group' && Array.isArray(task.assignedStudents) && task.assignedStudents.some(id => allowedStudentIds.has(String(id)))
+  ).map(task => String(task.id)));
+  const allowedQuizIds = new Set((state.quizzes || []).filter(quiz =>
+    Array.isArray(quiz.assignedStudents) && quiz.assignedStudents.some(id => allowedStudentIds.has(String(id)))
+  ).map(quiz => String(quiz.id)));
+
+  copy.students = allowedStudents;
+  // Os materiais de aula antigos não têm autor, aluno nem disciplina. Até à
+  // migração do módulo de Preparação para Provas, não são expostos a docentes
+  // comuns por uma rota que não consegue provar o respectivo âmbito.
+  copy.lessons = [];
+  copy.groupAllocations = Object.fromEntries(Object.entries(state.groupAllocations || {})
+    .filter(([studentId]) => allowedStudentIds.has(String(studentId))));
+  copy.tasks = (state.tasks || []).filter(task => allowedTaskIds.has(String(task.id)));
+  copy.quizzes = (state.quizzes || []).filter(quiz => allowedQuizIds.has(String(quiz.id)));
+  copy.submissions = (state.submissions || []).filter(allowed);
+  copy.quizAttempts = (state.quizAttempts || []).filter(allowed);
+  copy.taskSubmissions = (state.taskSubmissions || []).filter(item => allowed(item) && allowedTaskIds.has(String(item.taskId)));
+  copy.provisionalGrades = (state.provisionalGrades || []).filter(allowed);
+  copy.assessmentGrades = (state.assessmentGrades || []).filter(allowed);
+  copy.attendanceSessions = (state.attendanceSessions || []).map(session => {
+    const records = Object.fromEntries(Object.entries(session.records || {})
+      .filter(([studentId]) => allowedStudentIds.has(String(studentId))));
+    const attendance = Object.fromEntries(Object.entries(session.attendance || {})
+      .filter(([studentId]) => allowedStudentIds.has(String(studentId))));
+    return { ...session, records, attendance };
+  });
+  copy.notifications = (state.notifications || []).filter(item => item?.audience !== 'teachers' ||
+    allowedTaskIds.has(String(item.targetId)) || allowedQuizIds.has(String(item.targetId)));
+  return copy;
 }
 
 async function authenticate(req) {
@@ -180,4 +249,5 @@ module.exports = {
   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVER_KEY, HttpError,
   json, requireConfiguration, serviceHeaders, authenticate, getStoredState,
   saveStoredState, getRoster, studentState, quizAvailableToStudent, responseError,
+  isTeachingProfile, isAdminTeacher, getActiveTeacherAssignments, teacherState,
 };

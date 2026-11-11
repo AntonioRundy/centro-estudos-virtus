@@ -1,5 +1,8 @@
 const { randomUUID } = require('crypto');
-const { SUPABASE_ANON_KEY, HttpError, authenticate, getStoredState, json } = require('../_lib');
+const {
+  SUPABASE_ANON_KEY, HttpError, authenticate, getStoredState, getActiveTeacherAssignments,
+  isTeachingProfile, isAdminTeacher, json,
+} = require('../_lib');
 const { storagePath, createUploadUrl } = require('../_storage');
 const MIME_BY_EXTENSION = {
   '.pdf': ['application/pdf'], '.doc': ['application/msword'],
@@ -19,6 +22,15 @@ function validateFileType(kind, fileName, mime) {
   }
 }
 
+async function activityIsWithinTeacherScope(activity, profile) {
+  if (isAdminTeacher(profile)) return true;
+  if (!isTeachingProfile(profile) || !Array.isArray(activity?.assignedStudents) || !activity.assignedStudents.length) return false;
+  const assignments = await getActiveTeacherAssignments(profile.id);
+  if (assignments === null) return true;
+  const assigned = new Set(assignments.map(item => String(item.student_id)));
+  return activity.assignedStudents.every(studentId => assigned.has(String(studentId)));
+}
+
 
 module.exports = async function handler(req, res) {
   let stage = 'validar a sessão';
@@ -36,7 +48,7 @@ module.exports = async function handler(req, res) {
     const { state } = await getStoredState();
     if (!state) throw new HttpError(409, 'A sala ainda não está preparada.');
     if (kind === 'lesson') {
-      if (!['teacher', 'teacher_admin'].includes(profile.role)) throw new HttpError(403, 'Só o professor pode publicar materiais de aula.');
+      if (!isAdminTeacher(profile)) throw new HttpError(403, 'Materiais legados sem disciplina associada são publicados apenas pelo Professor Administrador.');
       if (!(state.modules || []).some(module => module.id === moduleId)) throw new HttpError(400, 'Selecione um módulo válido.');
     } else if (kind === 'task') {
       if (profile.role !== 'student') throw new HttpError(403, 'As entregas são feitas através de uma conta de aluno.');
@@ -57,9 +69,10 @@ module.exports = async function handler(req, res) {
       if (task.type === 'group' && !team) throw new HttpError(409, 'Ainda não foi atribuído a um grupo.');
       if (existing?.cloudStored) throw new HttpError(409, 'Já existe uma entrega nesta tarefa.');
     } else if (kind === 'prompt') {
-      if (!['teacher', 'teacher_admin'].includes(profile.role)) throw new HttpError(403, 'Só o professor pode anexar enunciados.');
-      const activityExists = [...(state.quizzes || []), ...(state.tasks || [])].some(item => item.id === activityId);
-      if (!activityExists) throw new HttpError(404, 'A atividade que vai receber o anexo não está disponível.');
+      if (!isTeachingProfile(profile)) throw new HttpError(403, 'Só o professor pode anexar enunciados.');
+      const activity = [...(state.quizzes || []), ...(state.tasks || [])].find(item => item.id === activityId);
+      if (!activity) throw new HttpError(404, 'A atividade que vai receber o anexo não está disponível.');
+      if (!await activityIsWithinTeacherScope(activity, profile)) throw new HttpError(403, 'A atividade não está atribuída apenas aos seus alunos.');
     } else {
       throw new HttpError(400, 'Tipo de ficheiro não reconhecido.');
     }

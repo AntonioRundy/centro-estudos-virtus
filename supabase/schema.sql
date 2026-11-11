@@ -1,11 +1,13 @@
--- Centro de Estudos e Explicações Virtus: contas e estado do centro.
--- Executar no SQL Editor do projecto Supabase Centro Virtus antes do primeiro acesso.
+-- Centro de Estudos e Explicações Virtus: esquema base para uma instalação nova.
+-- Para instalações já existentes, execute primeiro a migração
+-- supabase/migrations/001_accounts_assignments.sql. Não reaplique este ficheiro
+-- numa base antiga com o papel teacher_admin.
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text not null unique,
   full_name text not null,
-  role text not null check (role in ('teacher_admin', 'teacher', 'student')),
+  role text not null check (role in ('admin_teacher', 'teacher', 'secretary', 'student')),
   must_change_password boolean not null default false,
   is_superadmin boolean not null default false,
   created_at timestamptz not null default now()
@@ -14,11 +16,10 @@ create table if not exists public.profiles (
 alter table public.profiles add column if not exists is_superadmin boolean not null default false;
 alter table public.profiles drop constraint if exists profiles_role_check;
 alter table public.profiles add constraint profiles_role_check
-  check (role in ('teacher_admin', 'teacher', 'student'));
+  check (role in ('admin_teacher', 'teacher', 'secretary', 'student'));
 
--- teacher_admin is the only role with administrative powers.  The first account
--- is created through the one-time bootstrap route; subsequent accounts are
--- created through /admin/provisioning by a signed-in teacher_admin.
+-- admin_teacher gere matrículas e atribuições. A primeira conta é criada pela
+-- rota de instalação única; as seguintes por /admin/provisioning.
 
 alter table public.profiles enable row level security;
 revoke all on table public.profiles from anon, authenticated;

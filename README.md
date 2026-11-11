@@ -6,12 +6,24 @@ Base independente da **Plataforma de Ensino V - Online**. Este repositório não
 
 O Passo 1 está preparado:
 
-- esquema Supabase isolado (`profiles` e `course_state`);
+- esquema Supabase isolado e evolução segura para contas, disciplinas e atribuições;
 - rota segura para criar matrículas em `api/admin/provision.js`;
 - geração automática de `nome.apelido`, e-mail virtual e palavra-passe inicial `123456`;
-- perfis `Aluno`, `Professor` e `Professor Admin`;
+- perfis `Aluno`, `Professor`, `Professor Administrador` e `Secretária`;
+- atribuições explícitas Professor–Aluno–Disciplina: um professor consulta apenas os alunos que lhe foram atribuídos;
 - troca obrigatória de palavra-passe no primeiro acesso;
 - painel de matrícula em `/admin/provisioning`.
+
+## Base de dados: instalação ou actualização
+
+Numa base **nova**, execute primeiro [schema.sql](supabase/schema.sql) no SQL Editor e, em seguida, [001_accounts_assignments.sql](supabase/migrations/001_accounts_assignments.sql).
+
+Numa base que já tem o Centro Virtus antigo, execute **apenas** [001_accounts_assignments.sql](supabase/migrations/001_accounts_assignments.sql). A migração:
+
+- remove a antiga restrição de papéis antes de converter `teacher_admin` para `admin_teacher`;
+- arquiva a cópia histórica de `course_state` no esquema privado `private`, sem acesso por API pública;
+- cria `subjects`, `student_enrollments` e `teacher_student_subject_assignments` com RLS e validação de papéis;
+- não apaga anexos, entregas ou o estado histórico. Cada módulo será migrado depois de reconciliar os IDs existentes.
 
 ## Variáveis necessárias no novo Vercel
 
@@ -28,4 +40,4 @@ A primeira conta deve ser criada em `/admin/provisioning?setup=1` com a chave `C
 
 ## Limites do passo actual
 
-O Virtus Detector, a Preparação para Provas e Exames e o Pátio serão adaptados em etapas posteriores. A Sala de Aula Virtus continua no seu próprio repositório, Vercel e Supabase.
+O Virtus Detector, a Preparação para Provas e Exames, o Radar consolidado e o Pátio serão adaptados em etapas posteriores. A Sala de Aula Virtus continua no seu próprio repositório, Vercel e Supabase.

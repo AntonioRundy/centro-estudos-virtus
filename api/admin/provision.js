@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { SUPABASE_URL, requireConfiguration, serviceHeaders, authenticate, HttpError, json, responseError } = require('../_lib');
+const { isProvisioningRole } = require('../../lib/roles');
 
 const VIRTUAL_EMAIL_DOMAIN = 'users.centro-estudosvirtus.vercel.app';
 const INITIAL_PASSWORD = '123456';
@@ -18,7 +19,7 @@ function validateAccount(raw) {
   const fullName = String(raw.fullName || raw.full_name || '').trim().replace(/\s+/g, ' ');
   const role = String(raw.role || 'student').toLowerCase();
   if (fullName.length < 3 || fullName.length > 160) throw new HttpError(400, 'Indique o nome completo da conta.');
-  if (!['student', 'teacher', 'teacher_admin'].includes(role)) throw new HttpError(400, 'Escolha Aluno, Professor ou Professor Admin.');
+  if (!isProvisioningRole(role)) throw new HttpError(400, 'Escolha Aluno, Professor, Professor Administrador ou Secretária.');
   const words = fullName.split(' ').map(usernamePart).filter(Boolean);
   const base = [words[0], words.at(-1)].filter(Boolean).join('.').slice(0, 54);
   if (base.length < 3) throw new HttpError(400, 'Não foi possível gerar o nome de utilizador a partir do nome indicado.');
@@ -43,11 +44,11 @@ async function authorize(req, requestedRole) {
   if (await profileCount() === 0) {
     const supplied = String(req.headers['x-centro-bootstrap-token'] || '');
     const validToken = bootstrapToken && supplied.length === bootstrapToken.length && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(bootstrapToken));
-    if (requestedRole !== 'teacher_admin' || !validToken) throw new HttpError(403, 'A primeira conta deve ser Professor Admin e requer a chave de instalação.');
+    if (requestedRole !== 'admin_teacher' || !validToken) throw new HttpError(403, 'A primeira conta deve ser Professor Administrador e requer a chave de instalação.');
     return;
   }
   const { profile } = await authenticate(req);
-  if (profile.role !== 'teacher_admin' || profile.is_superadmin !== true) throw new HttpError(403, 'Apenas Professores Admin podem criar contas.');
+  if (!['admin_teacher', 'teacher_admin'].includes(profile.role)) throw new HttpError(403, 'Apenas Professores Administradores podem criar contas.');
 }
 async function createAccount(account) {
   const username = await uniqueUsername(account.base);
@@ -62,15 +63,36 @@ async function createAccount(account) {
     throw new HttpError(409, detail.msg || detail.message || 'Não foi possível criar a conta.');
   }
   const user = await authResponse.json();
-  const profileResponse = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+  let profileResponse = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
     method: 'POST', headers: serviceHeaders({ Prefer: 'return=representation' }),
     body: JSON.stringify({ id: user.id, username, full_name: account.fullName, role: account.role,
-      is_superadmin: account.role === 'teacher_admin', must_change_password: true }),
+      is_superadmin: account.role === 'admin_teacher', must_change_password: true }),
   });
+  // Permite publicar primeiro o código sem interromper uma base antiga. Após a
+  // migração 001, este desvio deixa de ser usado e todos os perfis são canónicos.
+  if (!profileResponse.ok && account.role === 'admin_teacher') {
+    const legacyResponse = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+      method: 'POST', headers: serviceHeaders({ Prefer: 'return=representation' }),
+      body: JSON.stringify({ id: user.id, username, full_name: account.fullName, role: 'teacher_admin',
+        is_superadmin: true, must_change_password: true }),
+    });
+    if (legacyResponse.ok) profileResponse = legacyResponse;
+  }
   if (!profileResponse.ok) {
     await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(user.id)}`, { method: 'DELETE', headers: serviceHeaders() }).catch(() => {});
     const detail = await profileResponse.json().catch(() => ({}));
     throw new HttpError(503, detail.message || 'A conta não foi concluída.');
+  }
+  if (account.role === 'student') {
+    const enrollmentResponse = await fetch(`${SUPABASE_URL}/rest/v1/student_enrollments`, {
+      method: 'POST', headers: serviceHeaders(), body: JSON.stringify({ student_id: user.id }),
+    });
+    if (!enrollmentResponse.ok) {
+      // Sem matrícula activa, a conta do aluno não deve ficar parcialmente criada.
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}`, { method: 'DELETE', headers: serviceHeaders() }).catch(() => {});
+      await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(user.id)}`, { method: 'DELETE', headers: serviceHeaders() }).catch(() => {});
+      throw new HttpError(503, 'A conta foi revertida porque não foi possível criar a matrícula do aluno. Execute a migração de contas e tente novamente.');
+    }
   }
   return { username, email, fullName: account.fullName, role: account.role, temporaryPassword: INITIAL_PASSWORD };
 }
