@@ -34,6 +34,7 @@ create table if not exists private.legacy_course_state_archive (
   archived_at timestamptz not null default now(),
   archived_by uuid references public.profiles(id)
 );
+alter table private.legacy_course_state_archive enable row level security;
 revoke all on table private.legacy_course_state_archive from public, anon, authenticated;
 
 insert into private.legacy_course_state_archive (source_revision, state)

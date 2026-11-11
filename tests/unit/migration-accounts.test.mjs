@@ -17,6 +17,7 @@ test('remove a restrição de papéis antes da conversão do perfil legado', () 
 
 test('protege o arquivo legado fora do schema público', () => {
   assert.match(sql, /create table if not exists private\.legacy_course_state_archive/i);
+  assert.match(sql, /alter table private\.legacy_course_state_archive enable row level security/i);
   assert.match(sql, /revoke all on table private\.legacy_course_state_archive from public, anon, authenticated/i);
 });
 
