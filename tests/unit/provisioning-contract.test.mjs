@@ -11,7 +11,7 @@ const stateApi = fs.readFileSync(path.join(root, 'api/state.js'), 'utf8');
 const helpers = fs.readFileSync(path.join(root, 'api/_lib.js'), 'utf8');
 const assetRead = fs.readFileSync(path.join(root, 'server/assets/read.js'), 'utf8');
 const assetUpload = fs.readFileSync(path.join(root, 'server/assets/upload.js'), 'utf8');
-const apiRouter = fs.readFileSync(path.join(root, 'api/[...route].js'), 'utf8');
+const apiRouter = fs.readFileSync(path.join(root, 'api/router.js'), 'utf8');
 
 test('cria uma matrícula activa ao criar a conta de aluno', () => {
   assert.match(provision, /account\.role === 'student'/);

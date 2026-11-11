@@ -1,5 +1,8 @@
 {
   "rewrites": [
+    { "source": "/api/auth/:path*", "destination": "/api/router?route=auth/:path*" },
+    { "source": "/api/assets/:path*", "destination": "/api/router?route=assets/:path*" },
+    { "source": "/api/admin/:path*", "destination": "/api/router?route=admin/:path*" },
     { "source": "/admin/provisioning", "destination": "/admin/provisioning/index.html" }
   ],
   "headers": [
