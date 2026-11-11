@@ -18,3 +18,13 @@ test('a rota não devolve detalhes sensíveis de falhas do provedor de autentica
   assert.match(handler, /Nome de utilizador ou palavra-passe inválidos/);
   assert.doesNotMatch(handler, /return json\(res, 401, data\)/);
 });
+
+test('o domínio virtual de novas contas e o domínio usado no login são o mesmo', () => {
+  const provisioning = fs.readFileSync(path.join(root, 'server/admin/provision.js'), 'utf8');
+  const config = fs.readFileSync(path.join(root, 'server/auth/config.js'), 'utf8');
+  const helpers = fs.readFileSync(path.join(root, 'api/_lib.js'), 'utf8');
+  assert.match(helpers, /VIRTUAL_EMAIL_DOMAIN/);
+  assert.match(provisioning, /VIRTUAL_EMAIL_DOMAIN/);
+  assert.match(config, /virtualEmailDomain: VIRTUAL_EMAIL_DOMAIN/);
+  assert.match(page, /authConfig\?\.virtualEmailDomain/);
+});

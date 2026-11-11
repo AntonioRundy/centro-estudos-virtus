@@ -1,8 +1,7 @@
 const crypto = require('crypto');
-const { SUPABASE_URL, requireConfiguration, serviceHeaders, authenticate, HttpError, json, responseError } = require('../../api/_lib');
+const { SUPABASE_URL, VIRTUAL_EMAIL_DOMAIN, requireConfiguration, serviceHeaders, authenticate, HttpError, json, responseError } = require('../../api/_lib');
 const { isProvisioningRole } = require('../../lib/roles');
 
-const VIRTUAL_EMAIL_DOMAIN = 'users.centro-estudosvirtus.vercel.app';
 const INITIAL_PASSWORD = '123456';
 
 function readBody(req) {

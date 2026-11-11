@@ -3,6 +3,11 @@ const { isTeachingRole, canonicalRole } = require('../lib/roles');
 const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
 const SUPABASE_SERVER_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
+// O domínio virtual é um identificador interno de login, não um domínio de
+// correio. Mantê-lo num único ponto evita criar contas que o formulário não
+// consegue voltar a localizar por nome de utilizador.
+const VIRTUAL_EMAIL_DOMAIN = String(process.env.VIRTUAL_EMAIL_DOMAIN || 'users.centro-virtus.vercel.app')
+  .trim().toLowerCase().replace(/^@+/, '');
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -246,7 +251,7 @@ function responseError(res, error) {
 }
 
 module.exports = {
-  SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVER_KEY, HttpError,
+  SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVER_KEY, VIRTUAL_EMAIL_DOMAIN, HttpError,
   json, requireConfiguration, serviceHeaders, authenticate, getStoredState,
   saveStoredState, getRoster, studentState, quizAvailableToStudent, responseError,
   isTeachingProfile, isAdminTeacher, getActiveTeacherAssignments, teacherState,
