@@ -2,6 +2,14 @@
 
 Base independente da **Plataforma de Ensino V - Online**. Este repositório não partilha código publicado, variáveis de ambiente, base de dados nem armazenamento com a Sala de Aula Virtus.
 
+## Publicação em produção — configuração bloqueada
+
+- **Domínio oficial exclusivo:** [`https://centro-estudosvirtus.vercel.app`](https://centro-estudosvirtus.vercel.app)
+- **Projeto Vercel correto:** `virtus-projects1/centro-estudosvirtus` (**sem hífen** entre `estudos` e `virtus`).
+- O vínculo local está fixado em `.vercel/project.json` com `projectId` `prj_dylOjh0NFC0PniBqE2aPQILD3JYU` e `orgId` `team_kRKERV1eyDzqYnzXVkYkawsg`.
+- Antes de qualquer publicação, execute `npx vercel whoami` e confirme que a CLI está ligada à conta autorizada. Em seguida utilize exclusivamente `npx vercel --prod --yes` a partir da raiz deste repositório e valide o alias devolvido pelo Vercel.
+- **Nunca** publique este código no projeto semelhante `centro-estudos-virtus` (com hífen): esse não é o portal oficial do Centro.
+
 ## Estado actual
 
 O Passo 1 está preparado:

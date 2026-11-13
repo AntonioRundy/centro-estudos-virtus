@@ -17,6 +17,9 @@
 </main><script>
 (()=>{const KEY='centro-virtus-auth-session-v1', qs=new URLSearchParams(location.search),setup=qs.get('setup')==='1';let session=null;
 const $=s=>document.querySelector(s),status=$('#status'),account=$('#account');$('#setup').hidden=!setup;
+$('#role').closest('.grid').insertAdjacentHTML('afterend','<div class="grid" id="student-details"><div class="field"><label for="schoolYear">Ano escolar</label><input id="schoolYear" name="schoolYear" maxlength="40" placeholder="Ex.: 10º Ano"></div><div class="field"><label for="subjectName">Disciplina</label><input id="subjectName" name="subjectName" maxlength="120" placeholder="Ex.: Matemática"></div><div class="field"><label for="teacherUsername">Professor atribuído</label><input id="teacherUsername" name="teacherUsername" maxlength="100" autocapitalize="none" placeholder="Ex.: antonio.fernando"></div></div><p class="muted" id="student-details-note" style="margin-top:9px">Para um aluno, indique a disciplina e o utilizador do professor para criar logo a atribuição pedagógica ativa.</p>');
+function toggleStudentDetails(){const isStudent=$('#role').value==='student';$('#student-details').hidden=!isStudent;$('#student-details-note').hidden=!isStudent;for(const input of $('#student-details').querySelectorAll('input'))input.disabled=!isStudent}
+$('#role').addEventListener('change',toggleStudentDetails);toggleStudentDetails();
 function message(text,kind){status.hidden=false;status.className='result '+kind;status.textContent=text}
 function escape(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 async function api(body){const headers={'Content-Type':'application/json'};if(session?.access_token)headers.Authorization='Bearer '+session.access_token;if(setup)headers['x-centro-bootstrap-token']=$('#bootstrap').value.trim();const r=await fetch('/api/admin/provision',{method:'POST',headers,body:JSON.stringify(body)});const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'Não foi possível criar a conta.');return data}
@@ -34,4 +37,110 @@ async function refresh(){const [catalogue,rows]=await Promise.all([request('/api
 $('#assignment-form').addEventListener('submit',async event=>{event.preventDefault();const button=event.currentTarget.querySelector('button[type="submit"]');const teacherId=$('#assignment-teacher').value,studentId=$('#assignment-student').value,subjectId=$('#assignment-subject').value;if(!teacherId||!studentId||!subjectId)return tell('Seleccione professor, aluno e disciplina.','error');button.disabled=true;try{await request('/api/assignments',{method:'POST',body:JSON.stringify({teacherId,studentId,subjectId,isPrimary:$('#assignment-primary').checked})});tell('Atribuição pedagógica criada.','success');event.currentTarget.reset();await refresh()}catch(error){tell(error.message,'error')}finally{button.disabled=false}});
 $('#subject-form').addEventListener('submit',async event=>{event.preventDefault();const input=$('#subject-name'),button=event.currentTarget.querySelector('button[type="submit"]');button.disabled=true;try{await request('/api/admin/directory',{method:'POST',body:JSON.stringify({name:input.value})});input.value='';tell('Disciplina adicionada.','success');await refresh()}catch(error){tell(error.message,'error')}finally{button.disabled=false}});
 (async()=>{if(new URLSearchParams(location.search).get('setup')==='1')return;try{const session=JSON.parse(localStorage.getItem(KEY)||'null');if(!session?.access_token)return;token=session.access_token;const profile=await request('/api/auth/session');if(profile.role!=='admin_teacher')return;panel.hidden=false;await refresh()}catch(error){panel.hidden=false;tell(error.message,'error')}})()})();
+</script>
+<script>
+/* A Secretaria só pode criar matrículas de alunos. Esta camada mantém o mesmo
+   formulário institucional, mas encaminha a operação para a API segura. */
+(() => {
+  const sessionKey = 'centro-virtus-auth-session-v1';
+  const $ = selector => document.querySelector(selector);
+  const form = $('#form');
+  const role = $('#role');
+  const status = $('#status');
+  const account = $('#account');
+  let profile = null;
+
+  const show = (text, kind = 'success') => {
+    status.hidden = false;
+    status.className = `result ${kind}`;
+    status.textContent = text;
+  };
+  const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[character]));
+
+  async function api(path, options = {}) {
+    const session = JSON.parse(localStorage.getItem(sessionKey) || 'null');
+    const response = await fetch(path, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token || ''}`,
+        ...(options.headers || {})
+      }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'Não foi possível concluir o pedido.');
+    return payload;
+  }
+
+  function addStudentFields() {
+    if ($('#username')) return;
+    const setup = $('#setup');
+    setup.insertAdjacentHTML('beforebegin', `
+      <div class="grid" id="secretary-student-fields">
+        <div class="field"><label for="username">Nome de utilizador</label><input id="username" name="username" maxlength="80" autocomplete="username" placeholder="Gerado automaticamente se ficar vazio"></div>
+        <div class="field"><label for="temporaryPassword">Senha temporária</label><input id="temporaryPassword" name="temporaryPassword" type="text" value="123456" minlength="6" maxlength="72" required></div>
+        <div class="field"><label for="subjectName">Disciplina</label><input id="subjectName" name="subjectName" maxlength="120" placeholder="Ex.: Matemática"></div>
+        <div class="field"><label for="className">Classe / ano escolar</label><input id="className" name="className" maxlength="80" placeholder="Ex.: 10.º Ano"></div>
+        <div class="field"><label for="guardianEmail">E-mail do encarregado</label><input id="guardianEmail" name="guardianEmail" type="email" maxlength="254" placeholder="Opcional"></div>
+      </div>`);
+  }
+
+  async function initialise() {
+    const session = JSON.parse(localStorage.getItem(sessionKey) || 'null');
+    if (!session?.access_token) return;
+    try {
+      profile = await api('/api/auth/session');
+      if (profile.role !== 'secretary') return;
+
+      addStudentFields();
+      role.value = 'student';
+      role.disabled = true;
+      $('#title').textContent = 'Inscrição de aluno';
+      $('#intro').textContent = 'Crie uma conta de aluno e registe a respetiva disciplina, classe e contacto do encarregado.';
+      $('#submit').textContent = 'Criar conta do aluno';
+      form.querySelectorAll('input, select, button').forEach(element => { element.disabled = false; });
+      role.disabled = true;
+      $('#bootstrap').closest('.setup').hidden = true;
+    } catch (error) {
+      show(error.message, 'error');
+    }
+  }
+
+  /* Executa na fase de captura para impedir o manipulador histórico de rejeitar
+     a sessão da Secretaria antes de a chamada segura chegar ao servidor. */
+  form.addEventListener('submit', async event => {
+    if (!profile || profile.role !== 'secretary') return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const button = $('#submit');
+    const data = new FormData(form);
+    const payload = {
+      fullName: data.get('fullName'),
+      role: 'student',
+      username: data.get('username'),
+      temporaryPassword: data.get('temporaryPassword'),
+      subjectName: data.get('subjectName'),
+      className: data.get('className'),
+      guardianEmail: data.get('guardianEmail')
+    };
+    button.disabled = true;
+    try {
+      const created = await api('/api/admin/provision', { method: 'POST', body: JSON.stringify(payload) });
+      show('Conta criada com sucesso. Registe e entregue as credenciais ao encarregado de educação.', 'success');
+      account.hidden = false;
+      account.innerHTML = `<div><strong>Aluno</strong><span>${escapeHtml(created.fullName)}</span></div><div><strong>Utilizador</strong><span>${escapeHtml(created.username)}</span></div><div><strong>Senha temporária</strong><span>${escapeHtml(created.temporaryPassword)}</span></div>`;
+      form.reset();
+      $('#temporaryPassword').value = '123456';
+      role.value = 'student';
+    } catch (error) {
+      show(error.message, 'error');
+    } finally {
+      button.disabled = false;
+    }
+  }, true);
+
+  initialise();
+})();
 </script></body></html>

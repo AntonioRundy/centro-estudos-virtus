@@ -47,7 +47,9 @@ function isAdminTeacher(profile) {
 async function getActiveTeacherAssignments(teacherId) {
   const today = new Date().toISOString().slice(0, 10);
   const query = new URLSearchParams({
-    select: 'student_id,subject_id', teacher_id: `eq.${teacherId}`,
+    // O identificador da atribuição é necessário para que as rotas sensíveis
+    // nunca recebam apenas um aluno/disciplina escolhidos pelo navegador.
+    select: 'id,student_id,subject_id', teacher_id: `eq.${teacherId}`,
     starts_on: `lte.${today}`, or: `(ends_on.is.null,ends_on.gte.${today})`,
   });
   const response = await fetch(`${SUPABASE_URL}/rest/v1/teacher_student_subject_assignments?${query}`, {
@@ -112,7 +114,13 @@ async function authenticate(req) {
   });
   if (!response.ok) throw new HttpError(401, 'A sessão expirou. Entre novamente.');
   const user = await response.json();
-  const profileResponse = await fetch(
+  let profileResponse = await fetch(
+    `${SUPABASE_URL}/rest/v1/profiles?select=id,username,full_name,role,must_change_password,school_year&id=eq.${encodeURIComponent(user.id)}`,
+    { headers: serviceHeaders() },
+  );
+  // Enquanto a aplicação é publicada antes da migração 007, mantém o login
+  // operacional e apenas omite o ano escolar até a coluna existir.
+  if (!profileResponse.ok) profileResponse = await fetch(
     `${SUPABASE_URL}/rest/v1/profiles?select=id,username,full_name,role,must_change_password&id=eq.${encodeURIComponent(user.id)}`,
     { headers: serviceHeaders() },
   );

@@ -14,6 +14,10 @@ const handlers = {
   'assets/delete': require('../server/assets/delete'),
   'admin/provision': require('../server/admin/provision'),
   'admin/directory': require('../server/admin/directory'),
+  'admin/operations': require('../server/admin/operations'),
+  'weekly-reports': require('../server/weekly-reports'),
+  patio: require('../server/patio'),
+  radar: require('../server/radar'),
 };
 
 function routeFromRequest(req) {
